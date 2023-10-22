@@ -3,9 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/brutella/hap"
@@ -13,70 +13,93 @@ import (
 	"github.com/brutella/hap/characteristic"
 	"github.com/caarlos0/env/v9"
 	"github.com/charmbracelet/log"
+	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
 type Config struct {
-	Addr string `env:"LISTEN" envDefault:":8089"`
+	BrokerHost string   `env:"MQTT_HOST" envDefault:"localhost"`
+	BrokerPort int      `env:"MQTT_PORT" envDefault:"1883"`
+	Floods     []string `env:"FLOODS"`
 }
 
 func main() {
-	bridge := accessory.NewBridge(accessory.Info{
-		Name:         "Shelly Bridge",
-		Manufacturer: "Shelly",
-	})
-
-	leak1 := NewLeakSensor(accessory.Info{
-		Name:         "Leak 1",
-		Manufacturer: "Shelly",
-	})
-
-	leak2 := NewLeakSensor(accessory.Info{
-		Name:         "Leak 2",
-		Manufacturer: "Shelly",
-	})
-
-	smoke1 := NewSmokeSensor(accessory.Info{
-		Name:         "Smoke 1",
-		Manufacturer: "Shelly",
-	})
-
-	fs := hap.NewFsStore("./db")
-
-	server, err := hap.NewServer(fs, bridge.A, leak1.A, leak2.A, smoke1.A)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	for i, a := range []*LeakSensor{leak1, leak2} {
-		server.ServeMux().
-			HandleFunc(fmt.Sprintf("/leak/%d/detected", i+1), func(_ http.ResponseWriter, _ *http.Request) {
-				log.Info("status", "sensor", a.Name(), "leaking", true)
-				a.LeakSensor.LeakDetected.SetValue(characteristic.LeakDetectedLeakDetected)
-			})
-		server.ServeMux().
-			HandleFunc(fmt.Sprintf("/leak/%d/cleared", i+1), func(_ http.ResponseWriter, _ *http.Request) {
-				log.Info("status", "sensor", a.Name(), "leaking", false)
-				a.LeakSensor.LeakDetected.SetValue(characteristic.LeakDetectedLeakNotDetected)
-			})
-	}
-
-	server.ServeMux().
-		HandleFunc(fmt.Sprintf("/smoke/%d/detected", 1), func(_ http.ResponseWriter, _ *http.Request) {
-			log.Info("status", "sensor", smoke1.Name(), "smoke", true)
-			smoke1.SmokeSensor.SmokeDetected.SetValue(characteristic.SmokeDetectedSmokeDetected)
-		})
-	server.ServeMux().
-		HandleFunc(fmt.Sprintf("/smoke/%d/cleared", 1), func(_ http.ResponseWriter, _ *http.Request) {
-			log.Info("status", "sensor", smoke1.Name(), "smoke", false)
-			smoke1.SmokeSensor.SmokeDetected.SetValue(characteristic.SmokeDetectedSmokeNotDetected)
-		})
-
 	var cfg Config
 	if err := env.Parse(&cfg); err != nil {
 		log.Fatal("cannot parse config", "err", err)
 	}
 
-	server.Addr = cfg.Addr
+	fs := hap.NewFsStore("./db")
+
+	bridge := accessory.NewBridge(accessory.Info{
+		Name:         "Shelly Bridge",
+		Manufacturer: "Shelly",
+	})
+
+	opts := mqtt.NewClientOptions()
+	opts.AddBroker(fmt.Sprintf("tcp://%s:%d", cfg.BrokerHost, cfg.BrokerPort))
+	opts.SetClientID("homekit_shelly")
+	opts.OnConnect = func(_ mqtt.Client) {
+		log.Info("connected to mqtt")
+	}
+	opts.OnConnectionLost = func(_ mqtt.Client, err error) {
+		log.Error("connection to mqtt lost", "err", err)
+	}
+	cli := mqtt.NewClient(opts)
+	if token := cli.Connect(); token.Wait() && token.Error() != nil {
+		log.Fatal("could not connect to mqtt", "token", token)
+	}
+
+	floods := make([]*FloodSensor, len(cfg.Floods))
+	for i, id := range cfg.Floods {
+		a := NewFloodSensor(accessory.Info{
+			Name:         fmt.Sprintf("Leak %d", i+1),
+			Manufacturer: "Shelly",
+			Model:        "Flood",
+			SerialNumber: id,
+		})
+		_ = a.Battery.ChargingState.SetValue(characteristic.ChargingStateNotChargeable)
+
+		for _, topic := range []string{
+			a.topicBattery,
+			a.topicFlood,
+			a.topicTemperature,
+		} {
+			cache, err := fs.Get(cacheKey(topic))
+			if err != nil {
+				log.Error("could not get value from cache", "topic", topic, "err", err)
+				continue
+			}
+			if err := a.Update(topic, cache); err != nil {
+				log.Error("could not set value from cache", "topic", topic, "err", err)
+				continue
+			}
+		}
+
+		if token := cli.SubscribeMultiple(map[string]byte{
+			a.topicBattery:     1,
+			a.topicFlood:       1,
+			a.topicTemperature: 1,
+			a.topicError:       1,
+			a.topicActReasons:  1,
+		}, func(_ mqtt.Client, m mqtt.Message) {
+			m.Ack()
+			if err := fs.Set(cacheKey(m.Topic()), m.Payload()); err != nil {
+				log.Error("could not cache response", "id", id, "payload", string(m.Payload()), "err", err)
+			}
+			if err := a.Update(m.Topic(), m.Payload()); err != nil {
+				log.Error("could not update sensor", "err", err)
+			}
+		}); token.Wait() && token.Error() != nil {
+			log.Error("failed to get event from mqtt", "shelly", id, "token", token)
+		}
+
+		floods[i] = a
+	}
+
+	server, err := hap.NewServer(fs, bridge.A, allAccessories(floods)...)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	log.Info("server started", "addr", server.Addr)
 
@@ -93,4 +116,16 @@ func main() {
 
 	// Run the server.
 	server.ListenAndServe(ctx)
+}
+
+func allAccessories(floods []*FloodSensor) []*accessory.A {
+	r := make([]*accessory.A, len(floods))
+	for i, flood := range floods {
+		r[i] = flood.A
+	}
+	return r
+}
+
+func cacheKey(topic string) string {
+	return strings.ReplaceAll(topic, "/", "-")
 }
