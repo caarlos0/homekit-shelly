@@ -14,3 +14,8 @@ FLOODS=Device1ID,Device2ID,etc homekit-shelly
 Then, add the Shelly Bridge to your Home, and everything should work.
 
 The PIN is `001-02-003`.
+
+When an event happens in the Shelly's, they will send it to mqtt, which
+homekit-shelly will be listening to.
+
+Previous responses are cached so it works across restarts as well.
