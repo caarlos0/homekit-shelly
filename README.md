@@ -19,3 +19,7 @@ When an event happens in the Shelly's, they will send it to mqtt, which
 homekit-shelly will be listening to.
 
 Previous responses are cached so it works across restarts as well.
+
+## TODO
+
+- [ ] implement smoke alarms

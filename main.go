@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -98,10 +100,8 @@ func main() {
 
 	server, err := hap.NewServer(fs, bridge.A, allAccessories(floods)...)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("fail to start server", "error", err)
 	}
-
-	log.Info("server started", "addr", server.Addr)
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
@@ -110,12 +110,15 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		<-c
+		log.Info("stopping server...")
 		signal.Stop(c)
 		cancel()
 	}()
 
-	// Run the server.
-	server.ListenAndServe(ctx)
+	log.Info("starting server...")
+	if err := server.ListenAndServe(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Error("failed to close server", "err", err)
+	}
 }
 
 func allAccessories(floods []*FloodSensor) []*accessory.A {
