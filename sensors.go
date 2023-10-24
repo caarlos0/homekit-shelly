@@ -58,26 +58,41 @@ func NewFloodSensor(info accessory.Info) *FloodSensor {
 	return &a
 }
 
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
 func (a *FloodSensor) Update(topic string, payload []byte) error {
+	serial := a.Info.SerialNumber.Value()
 	switch topic {
 	case a.topicBattery:
 		level, err := parseBattery(payload)
 		if err != nil {
-			return fmt.Errorf("set battery status for %s: %w", a.Info.SerialNumber.Value(), err)
+			return fmt.Errorf("set battery status for %s: %w", serial, err)
 		}
 		if err := a.Battery.BatteryLevel.SetValue(level); err != nil {
-			return fmt.Errorf("set battery status for %s: %w", a.Info.SerialNumber.Value(), err)
+			return fmt.Errorf("set battery status for %s: %w", serial, err)
 		}
+		if err := a.Battery.StatusLowBattery.SetValue(boolToInt(level < 10)); err != nil {
+			return fmt.Errorf("set battery status for %s: %w", serial, err)
+		}
+		log.Info("updated battery status", "shelly", serial, "status", level)
 	case a.topicFlood:
-		if err := a.LeakSensor.LeakDetected.SetValue(parseFlood(payload)); err != nil {
+		status := parseFlood(payload)
+		if err := a.LeakSensor.LeakDetected.SetValue(status); err != nil {
 			return fmt.Errorf("set leak status for %s: %w", a.Info.SerialNumber.Value(), err)
 		}
+		log.Info("updated leak status", "shelly", serial, "status", status)
 	case a.topicTemperature:
 		temp, err := parseTemp(payload)
 		if err != nil {
 			return fmt.Errorf("set temperature for %s: %w", a.Info.SerialNumber.Value(), err)
 		}
 		a.Temperature.CurrentTemperature.SetValue(temp)
+		log.Info("updated temperature", "shelly", serial, "status", temp)
 	case a.topicError:
 		if string(payload) != "0" {
 			log.Error(
