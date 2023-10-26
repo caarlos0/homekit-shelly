@@ -22,6 +22,7 @@ type Config struct {
 	BrokerHost string   `env:"MQTT_HOST" envDefault:"localhost"`
 	BrokerPort int      `env:"MQTT_PORT" envDefault:"1883"`
 	Floods     []string `env:"FLOODS"`
+	Smokes     []string `env:"SMOKES"`
 }
 
 func main() {
@@ -98,7 +99,52 @@ func main() {
 		floods[i] = a
 	}
 
-	server, err := hap.NewServer(fs, bridge.A, allAccessories(floods)...)
+	smokes := make([]*SmokeSensor, len(cfg.Smokes))
+	for i, id := range cfg.Smokes {
+		a := NewSmokeSensor(accessory.Info{
+			Name:         fmt.Sprintf("Smoke %d", i+1),
+			Manufacturer: "Shelly",
+			Model:        "Smoke",
+			SerialNumber: id,
+		})
+		_ = a.Battery.ChargingState.SetValue(characteristic.ChargingStateNotChargeable)
+
+		for _, topic := range []string{
+			a.topicBattery,
+			a.topicSmoke,
+		} {
+			cache, err := fs.Get(cacheKey(topic))
+			if err != nil {
+				log.Error("could not get value from cache", "topic", topic, "err", err)
+				continue
+			}
+			if err := a.Update(topic, cache); err != nil {
+				log.Error("could not set value from cache", "topic", topic, "err", err)
+				continue
+			}
+		}
+
+		if token := cli.SubscribeMultiple(map[string]byte{
+			a.topicBattery:    1,
+			a.topicSmoke:      1,
+			a.topicError:      1,
+			a.topicActReasons: 1,
+		}, func(_ mqtt.Client, m mqtt.Message) {
+			m.Ack()
+			if err := fs.Set(cacheKey(m.Topic()), m.Payload()); err != nil {
+				log.Error("could not cache response", "id", id, "payload", string(m.Payload()), "err", err)
+			}
+			if err := a.Update(m.Topic(), m.Payload()); err != nil {
+				log.Error("could not update sensor", "err", err)
+			}
+		}); token.Wait() && token.Error() != nil {
+			log.Error("failed to get event from mqtt", "shelly", id, "token", token)
+		}
+
+		smokes[i] = a
+	}
+
+	server, err := hap.NewServer(fs, bridge.A, allAccessories(floods, smokes)...)
 	if err != nil {
 		log.Fatal("fail to start server", "error", err)
 	}
@@ -121,10 +167,13 @@ func main() {
 	}
 }
 
-func allAccessories(floods []*FloodSensor) []*accessory.A {
-	r := make([]*accessory.A, len(floods))
-	for i, flood := range floods {
-		r[i] = flood.A
+func allAccessories(floods []*FloodSensor, smokes []*SmokeSensor) []*accessory.A {
+	var r []*accessory.A
+	for _, a := range floods {
+		r = append(r, a.A)
+	}
+	for _, a := range smokes {
+		r = append(r, a.A)
 	}
 	return r
 }

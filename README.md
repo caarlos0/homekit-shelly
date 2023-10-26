@@ -8,7 +8,7 @@ and your Shelly's to use it.
 You can then run this project with:
 
 ```bash
-FLOODS=Device1ID,Device2ID,etc homekit-shelly
+SMOKES=Device1ID,Device2ID FLOODS=Device1ID,Device2ID,etc homekit-shelly
 ```
 
 Then, add the Shelly Bridge to your Home, and everything should work.
@@ -19,7 +19,3 @@ When an event happens in the Shelly's, they will send it to mqtt, which
 homekit-shelly will be listening to.
 
 Previous responses are cached so it works across restarts as well.
-
-## TODO
-
-- [ ] implement smoke alarms

@@ -13,17 +13,73 @@ import (
 
 type SmokeSensor struct {
 	*accessory.A
-	SmokeSensor service.SmokeSensor
+	SmokeSensor *service.SmokeSensor
+	Battery     *service.BatteryService
+
+	topicBattery, topicSmoke, topicError, topicActReasons string
 }
 
 func NewSmokeSensor(info accessory.Info) *SmokeSensor {
 	a := SmokeSensor{}
 	a.A = accessory.New(info, accessory.TypeSensor)
 
-	a.SmokeSensor = *service.NewSmokeSensor()
+	a.SmokeSensor = service.NewSmokeSensor()
 	a.AddS(a.SmokeSensor.S)
 
+	a.Battery = service.NewBatteryService()
+	a.AddS(a.Battery.S)
+
+	id := info.SerialNumber
+	a.topicBattery = fmt.Sprintf("shellies/shellysmoke-%s/sensor/battery", id)
+	a.topicSmoke = fmt.Sprintf("shellies/shellysmoke-%s/sensor/smoke", id)
+	a.topicError = fmt.Sprintf("shellies/shellysmoke-%s/sensor/error", id)
+	a.topicActReasons = fmt.Sprintf("shellies/shellysmoke-%s/sensor/act_reasons", id)
+
 	return &a
+}
+
+func (a *SmokeSensor) Update(topic string, payload []byte) error {
+	serial := a.Info.SerialNumber.Value()
+	switch topic {
+	case a.topicBattery:
+		level, err := parseInt(payload)
+		if err != nil {
+			return fmt.Errorf("set battery status for %s: %w", serial, err)
+		}
+		if err := a.Battery.BatteryLevel.SetValue(level); err != nil {
+			return fmt.Errorf("set battery status for %s: %w", serial, err)
+		}
+		if err := a.Battery.StatusLowBattery.SetValue(boolToInt(level < 10)); err != nil {
+			return fmt.Errorf("set battery status for %s: %w", serial, err)
+		}
+		log.Info("updated battery status", "shelly", serial, "status", level)
+	case a.topicSmoke:
+		status := parseBool(payload)
+		if err := a.SmokeSensor.SmokeDetected.SetValue(status); err != nil {
+			return fmt.Errorf("set smoke status for %s: %w", a.Info.SerialNumber.Value(), err)
+		}
+		log.Info("updated smoke status", "shelly", serial, "status", status)
+	case a.topicError:
+		if string(payload) != "0" {
+			log.Error(
+				"sensor reported an error",
+				"id", a.Info.SerialNumber,
+				"payload", string(payload),
+			)
+		}
+	case a.topicActReasons:
+		reasons, err := parseStringArray(payload)
+		if err != nil {
+			log.Error(
+				"failed to parse sensor act reasons",
+				"id", a.Info.SerialNumber,
+				"payload", string(payload),
+				"err", err,
+			)
+		}
+		log.Info("sensor reason to act", "id", a.Info.SerialNumber.Value(), "reasons", reasons)
+	}
+	return nil
 }
 
 type FloodSensor struct {
@@ -69,7 +125,7 @@ func (a *FloodSensor) Update(topic string, payload []byte) error {
 	serial := a.Info.SerialNumber.Value()
 	switch topic {
 	case a.topicBattery:
-		level, err := parseBattery(payload)
+		level, err := parseInt(payload)
 		if err != nil {
 			return fmt.Errorf("set battery status for %s: %w", serial, err)
 		}
@@ -81,13 +137,13 @@ func (a *FloodSensor) Update(topic string, payload []byte) error {
 		}
 		log.Info("updated battery status", "shelly", serial, "status", level)
 	case a.topicFlood:
-		status := parseFlood(payload)
+		status := parseBool(payload)
 		if err := a.LeakSensor.LeakDetected.SetValue(status); err != nil {
 			return fmt.Errorf("set leak status for %s: %w", a.Info.SerialNumber.Value(), err)
 		}
 		log.Info("updated leak status", "shelly", serial, "status", status)
 	case a.topicTemperature:
-		temp, err := parseTemp(payload)
+		temp, err := parseFloat(payload)
 		if err != nil {
 			return fmt.Errorf("set temperature for %s: %w", a.Info.SerialNumber.Value(), err)
 		}
@@ -97,23 +153,19 @@ func (a *FloodSensor) Update(topic string, payload []byte) error {
 		if string(payload) != "0" {
 			log.Error(
 				"sensor reported an error",
-				"id",
-				a.Info.SerialNumber,
-				"err",
-				string(payload),
+				"id", a.Info.SerialNumber,
+				"err", string(payload),
 			)
 		}
 	case a.topicActReasons:
-		reasons, err := parseActReason(payload)
+		reasons, err := parseStringArray(payload)
 		if err != nil {
 			log.Error(
 				"failed to parse sensor act reasons",
 				"id",
 				a.Info.SerialNumber,
-				"err",
-				string(payload),
-				"err",
-				err,
+				"payload", string(payload),
+				"err", err,
 			)
 		}
 		log.Info("sensor reason to act", "id", a.Info.SerialNumber.Value(), "reasons", reasons)
@@ -121,22 +173,22 @@ func (a *FloodSensor) Update(topic string, payload []byte) error {
 	return nil
 }
 
-func parseTemp(b []byte) (float64, error) {
+func parseFloat(b []byte) (float64, error) {
 	return strconv.ParseFloat(string(b), 64)
 }
 
-func parseFlood(b []byte) int {
+func parseBool(b []byte) int {
 	if string(b) == "true" {
 		return characteristic.LeakDetectedLeakDetected
 	}
 	return characteristic.LeakDetectedLeakNotDetected
 }
 
-func parseBattery(b []byte) (int, error) {
+func parseInt(b []byte) (int, error) {
 	return strconv.Atoi(string(b))
 }
 
-func parseActReason(b []byte) ([]string, error) {
+func parseStringArray(b []byte) ([]string, error) {
 	var reasons []string
 	err := json.Unmarshal(b, &reasons)
 	return reasons, err
