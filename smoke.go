@@ -13,17 +13,17 @@ import (
 )
 
 type SmokeEvent struct {
-	Src    string `json:"src"`
-	Method string `json:"method"`
-	Params Params `json:"params"`
+	Src    string      `json:"src"`
+	Method string      `json:"method"`
+	Params SmokeParams `json:"params"`
 }
 
-type Battery struct {
+type SmokeBattery struct {
 	Percent int `json:"percent"`
 }
 
-type Devicepower0 struct {
-	Battery Battery `json:"battery"`
+type SmokeDevicePower struct {
+	Battery SmokeBattery `json:"battery"`
 }
 
 type Smoke0 struct {
@@ -32,15 +32,9 @@ type Smoke0 struct {
 	Mute  bool `json:"mute"`
 }
 
-type Wifi struct {
-	StaIP  string `json:"sta_ip"`
-	Status string `json:"status"`
-	Ssid   string `json:"ssid"`
-	Rssi   int    `json:"rssi"`
-}
-type Params struct {
-	Devicepower0 Devicepower0 `json:"devicepower:0"`
-	Smoke0       Smoke0       `json:"smoke:0"`
+type SmokeParams struct {
+	Devicepower0 SmokeDevicePower `json:"devicepower:0"`
+	Smoke0       Smoke0           `json:"smoke:0"`
 }
 
 type SmokeSensor struct {
@@ -69,23 +63,35 @@ func NewSmokeSensor(info accessory.Info) *SmokeSensor {
 	a.AddS(a.Battery.S)
 
 	id := info.SerialNumber
-	a.topic = fmt.Sprintf("shellyplussmoke-%s/events", strings.ToLower(id))
+	a.topic = fmt.Sprintf("shellyplussmoke-%s/events/rpc", strings.ToLower(id))
 	return &a
 }
 
 func (a *SmokeSensor) listen(cli mqtt.Client, fs hap.Store) {
-	log.Info("topic is: " + a.topic)
+	serial := a.Info.SerialNumber.Value()
 	cli.Subscribe(a.topic, 1, func(_ mqtt.Client, msg mqtt.Message) {
 		msg.Ack()
 		if len(msg.Payload()) == 0 {
 			return
 		}
 		if err := fs.Set(cacheKey(a.topic), msg.Payload()); err != nil {
-			log.Warn("could not store event in cache", "err", err, "payload", string(msg.Payload()))
+			log.Warn(
+				"could not store event in cache",
+				"type", "shellyplussmoke",
+				"shelly", serial,
+				"err", err,
+				"payload", string(msg.Payload()),
+			)
 		}
 		var event SmokeEvent
 		if err := json.Unmarshal(msg.Payload(), &event); err != nil {
-			log.Error("could not parse shelly event", "err", err, "payload", string(msg.Payload()))
+			log.Error(
+				"could not parse shelly event",
+				"type", "shellyplussmoke",
+				"shelly", serial,
+				"err", err,
+				"payload", string(msg.Payload()),
+			)
 			return
 		}
 		if err := a.Update(event); err != nil {
@@ -96,6 +102,10 @@ func (a *SmokeSensor) listen(cli mqtt.Client, fs hap.Store) {
 
 func (a *SmokeSensor) Update(evt SmokeEvent) error {
 	serial := a.Info.SerialNumber.Value()
+	if evt.Method != "NotifyFullStatus" {
+		log.Warn("ignoring event", "method", evt.Method)
+		return nil
+	}
 
 	if v := evt.Params.Devicepower0.Battery.Percent; a.Battery.BatteryLevel.Value() != v {
 		if err := a.Battery.BatteryLevel.SetValue(v); err != nil {
@@ -104,14 +114,14 @@ func (a *SmokeSensor) Update(evt SmokeEvent) error {
 		if err := a.Battery.StatusLowBattery.SetValue(boolToInt(v < 10)); err != nil {
 			return fmt.Errorf("set battery status for %s: %w", serial, err)
 		}
-		log.Info("updated battery status", "shelly", serial, "status", v)
+		log.Info("updated battery status", "type", "shellyplussmoke", "shelly", serial, "status", v)
 	}
 
 	if v := evt.Params.Smoke0.Alarm; boolToInt(v) != a.Smoke.SmokeDetected.Value() {
 		if err := a.Smoke.SmokeDetected.SetValue(boolToInt(v)); err != nil {
 			return fmt.Errorf("set smoke status for %s: %w", a.Info.SerialNumber.Value(), err)
 		}
-		log.Info("updated smoke status", "shelly", serial, "status", v)
+		log.Info("updated smoke status", "type", "shellyplussmoke", "shelly", serial, "status", v)
 	}
 
 	return nil

@@ -34,7 +34,7 @@ func main() {
 	fs := hap.NewFsStore("./db")
 
 	bridge := accessory.NewBridge(accessory.Info{
-		Name:         "Shelly Bridge (testing)",
+		Name:         "Shelly Bridge",
 		Manufacturer: "Shelly",
 	})
 
@@ -62,40 +62,11 @@ func main() {
 		})
 		_ = a.Battery.ChargingState.SetValue(characteristic.ChargingStateNotChargeable)
 
-		for _, topic := range []string{
-			a.topicBattery,
-			a.topicFlood,
-			a.topicTemperature,
-		} {
-			cache, err := fs.Get(cacheKey(topic))
-			if err != nil {
-				log.Error("could not get value from cache", "topic", topic, "err", err)
-				continue
-			}
-			if err := a.Update(topic, cache); err != nil {
-				log.Error("could not set value from cache", "topic", topic, "err", err)
-				continue
-			}
-		}
+		a.listen(cli, fs)
 
-		if token := cli.SubscribeMultiple(map[string]byte{
-			a.topicBattery:     1,
-			a.topicFlood:       1,
-			a.topicTemperature: 1,
-			a.topicError:       1,
-			a.topicActReasons:  1,
-		}, func(_ mqtt.Client, m mqtt.Message) {
-			m.Ack()
-			log.Info("got msg", "topic", m.Topic())
-			if err := fs.Set(cacheKey(m.Topic()), m.Payload()); err != nil {
-				log.Error("could not cache response", "id", id, "payload", string(m.Payload()), "err", err)
-			}
-			if err := a.Update(m.Topic(), m.Payload()); err != nil {
-				log.Error("could not update sensor", "err", err)
-			}
-		}); token.Wait() && token.Error() != nil {
-			log.Error("failed to get event from mqtt", "shelly", id, "token", token)
-		}
+		// try to publish cached status
+		cache, _ := fs.Get(cacheKey(a.topic))
+		_ = cli.Publish(a.topic, 1, false, cache)
 
 		floods[i] = a
 	}
@@ -110,7 +81,7 @@ func main() {
 		})
 		_ = a.Battery.ChargingState.SetValue(characteristic.ChargingStateNotChargeable)
 
-		a.listen(cli)
+		a.listen(cli, fs)
 
 		// try to publish cached status
 		cache, _ := fs.Get(cacheKey(a.topic))
@@ -155,4 +126,11 @@ func allAccessories(floods []*FloodSensor, smokes []*SmokeSensor) []*accessory.A
 
 func cacheKey(topic string) string {
 	return strings.ReplaceAll(topic, "/", "-")
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
