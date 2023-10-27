@@ -32,10 +32,14 @@ type Config struct {
 }
 
 func main() {
+	log.Info("homekit-shelly", "version", version, "commit", commit, "date", date)
+
 	var cfg Config
 	if err := env.Parse(&cfg); err != nil {
 		log.Fatal("cannot parse config", "err", err)
 	}
+
+	log.Info("loading accessories", "smokes", cfg.Smokes, "Floods", cfg.Floods)
 
 	fs := hap.NewFsStore("./db")
 
@@ -113,7 +117,7 @@ func main() {
 		cancel()
 	}()
 
-	log.Info("starting homekit-shelly...", "version", version, "commit", commit, "date", date)
+	log.Info("starting server...")
 	if err := server.ListenAndServe(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Error("failed to close server", "err", err)
 	}
