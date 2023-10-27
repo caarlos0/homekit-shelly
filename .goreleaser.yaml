@@ -19,6 +19,16 @@ builds:
       - amd64
       - arm64
 
+nfpms:
+  - vendor: Becker Software LTDA
+    homepage: https://carlosbecker.com
+    maintainer: Carlos Becker <root@carlosbecker.dev>
+    description: Homekit bridge for some Shelly devices
+    formats:
+      - deb
+      - apk
+      - rpm
+
 archives:
   - format: tar.gz
     name_template: >-

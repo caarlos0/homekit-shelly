@@ -18,6 +18,12 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 type Config struct {
 	BrokerHost string   `env:"MQTT_HOST" envDefault:"localhost"`
 	BrokerPort int      `env:"MQTT_PORT" envDefault:"1883"`
@@ -42,7 +48,7 @@ func main() {
 	opts.AddBroker(fmt.Sprintf("tcp://%s:%d", cfg.BrokerHost, cfg.BrokerPort))
 	opts.SetClientID("homekit_shelly")
 	opts.OnConnect = func(_ mqtt.Client) {
-		log.Info("connected to mqtt")
+		log.Info("connected to mqtt", "host", cfg.BrokerHost, "port", cfg.BrokerPort)
 	}
 	opts.OnConnectionLost = func(_ mqtt.Client, err error) {
 		log.Error("connection to mqtt lost", "err", err)
@@ -107,7 +113,7 @@ func main() {
 		cancel()
 	}()
 
-	log.Info("starting server...")
+	log.Info("starting homekit-shelly...", "version", version, "commit", commit, "date", date)
 	if err := server.ListenAndServe(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Error("failed to close server", "err", err)
 	}
