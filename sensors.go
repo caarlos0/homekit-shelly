@@ -11,80 +11,9 @@ import (
 	"github.com/charmbracelet/log"
 )
 
-type SmokeSensor struct {
-	*accessory.A
-	SmokeSensor *service.SmokeSensor
-	Battery     *service.BatteryService
-
-	topicBattery, topicSmoke, topicError, topicActReasons string
-}
-
-func NewSmokeSensor(info accessory.Info) *SmokeSensor {
-	a := SmokeSensor{}
-	a.A = accessory.New(info, accessory.TypeSensor)
-
-	a.SmokeSensor = service.NewSmokeSensor()
-	a.AddS(a.SmokeSensor.S)
-
-	a.Battery = service.NewBatteryService()
-	a.AddS(a.Battery.S)
-
-	id := info.SerialNumber
-	a.topicBattery = fmt.Sprintf("shellies/shellysmoke-%s/sensor/battery", id)
-	a.topicSmoke = fmt.Sprintf("shellies/shellysmoke-%s/sensor/smoke", id)
-	a.topicError = fmt.Sprintf("shellies/shellysmoke-%s/sensor/error", id)
-	a.topicActReasons = fmt.Sprintf("shellies/shellysmoke-%s/sensor/act_reasons", id)
-
-	return &a
-}
-
-func (a *SmokeSensor) Update(topic string, payload []byte) error {
-	serial := a.Info.SerialNumber.Value()
-	switch topic {
-	case a.topicBattery:
-		level, err := parseInt(payload)
-		if err != nil {
-			return fmt.Errorf("set battery status for %s: %w", serial, err)
-		}
-		if err := a.Battery.BatteryLevel.SetValue(level); err != nil {
-			return fmt.Errorf("set battery status for %s: %w", serial, err)
-		}
-		if err := a.Battery.StatusLowBattery.SetValue(boolToInt(level < 10)); err != nil {
-			return fmt.Errorf("set battery status for %s: %w", serial, err)
-		}
-		log.Info("updated battery status", "shelly", serial, "status", level)
-	case a.topicSmoke:
-		status := parseBool(payload)
-		if err := a.SmokeSensor.SmokeDetected.SetValue(status); err != nil {
-			return fmt.Errorf("set smoke status for %s: %w", a.Info.SerialNumber.Value(), err)
-		}
-		log.Info("updated smoke status", "shelly", serial, "status", status)
-	case a.topicError:
-		if string(payload) != "0" {
-			log.Error(
-				"sensor reported an error",
-				"id", a.Info.SerialNumber,
-				"payload", string(payload),
-			)
-		}
-	case a.topicActReasons:
-		reasons, err := parseStringArray(payload)
-		if err != nil {
-			log.Error(
-				"failed to parse sensor act reasons",
-				"id", a.Info.SerialNumber,
-				"payload", string(payload),
-				"err", err,
-			)
-		}
-		log.Info("sensor reason to act", "id", a.Info.SerialNumber.Value(), "reasons", reasons)
-	}
-	return nil
-}
-
 type FloodSensor struct {
 	*accessory.A
-	LeakSensor  *service.LeakSensor
+	Leak        *service.LeakSensor
 	Temperature *service.TemperatureSensor
 	Battery     *service.BatteryService
 
@@ -95,8 +24,8 @@ func NewFloodSensor(info accessory.Info) *FloodSensor {
 	a := FloodSensor{}
 	a.A = accessory.New(info, accessory.TypeSensor)
 
-	a.LeakSensor = service.NewLeakSensor()
-	a.AddS(a.LeakSensor.S)
+	a.Leak = service.NewLeakSensor()
+	a.AddS(a.Leak.S)
 
 	a.Temperature = service.NewTemperatureSensor()
 	a.AddS(a.Temperature.S)
@@ -138,7 +67,7 @@ func (a *FloodSensor) Update(topic string, payload []byte) error {
 		log.Info("updated battery status", "shelly", serial, "status", level)
 	case a.topicFlood:
 		status := parseBool(payload)
-		if err := a.LeakSensor.LeakDetected.SetValue(status); err != nil {
+		if err := a.Leak.LeakDetected.SetValue(status); err != nil {
 			return fmt.Errorf("set leak status for %s: %w", a.Info.SerialNumber.Value(), err)
 		}
 		log.Info("updated leak status", "shelly", serial, "status", status)
