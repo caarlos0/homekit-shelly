@@ -29,17 +29,27 @@ type Config struct {
 	BrokerPort int      `env:"MQTT_PORT" envDefault:"1883"`
 	Floods     []string `env:"FLOODS"`
 	Smokes     []string `env:"SMOKES"`
+	HTs        []string `env:"HTS"`
 }
 
 func main() {
-	log.Info("homekit-shelly", "version", version, "commit", commit, "date", date)
-
+	log.Info(
+		"homekit-shelly",
+		"version", version,
+		"commit", commit,
+		"date", date,
+		"info", strings.Join([]string{
+			"Homekit bridge for Shelly devices",
+			"© Carlos Alexandro Becker",
+			"https://becker.software",
+		}, "\n"),
+	)
 	var cfg Config
 	if err := env.Parse(&cfg); err != nil {
 		log.Fatal("cannot parse config", "err", err)
 	}
 
-	log.Info("loading accessories", "smokes", cfg.Smokes, "Floods", cfg.Floods)
+	log.Info("loading accessories", "smokes", cfg.Smokes, "floods", cfg.Floods, "h&ts", cfg.HTs)
 
 	fs := hap.NewFsStore("./db")
 
@@ -100,7 +110,26 @@ func main() {
 		smokes[i] = a
 	}
 
-	server, err := hap.NewServer(fs, bridge.A, allAccessories(floods, smokes)...)
+	hts := make([]*HTSensor, len(cfg.HTs))
+	for i, id := range cfg.HTs {
+		a := NewHTSensor(accessory.Info{
+			Name:         fmt.Sprintf("H&T %d", i+1),
+			Manufacturer: "Shelly",
+			Model:        "Plus H&T",
+			SerialNumber: id,
+		})
+		_ = a.Battery.ChargingState.SetValue(characteristic.ChargingStateNotChargeable)
+
+		a.listen(cli, fs)
+
+		// try to publish cached status
+		cache, _ := fs.Get(cacheKey(a.topic))
+		_ = cli.Publish(a.topic, 1, false, cache)
+
+		hts[i] = a
+	}
+
+	server, err := hap.NewServer(fs, bridge.A, allAccessories(floods, smokes, hts)...)
 	if err != nil {
 		log.Fatal("fail to start server", "error", err)
 	}
@@ -123,12 +152,15 @@ func main() {
 	}
 }
 
-func allAccessories(floods []*FloodSensor, smokes []*SmokeSensor) []*accessory.A {
+func allAccessories(floods []*FloodSensor, smokes []*SmokeSensor, hts []*HTSensor) []*accessory.A {
 	var r []*accessory.A
 	for _, a := range floods {
 		r = append(r, a.A)
 	}
 	for _, a := range smokes {
+		r = append(r, a.A)
+	}
+	for _, a := range hts {
 		r = append(r, a.A)
 	}
 	return r
