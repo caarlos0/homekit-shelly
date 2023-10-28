@@ -32,7 +32,17 @@ type Config struct {
 }
 
 func main() {
-	log.Info("homekit-shelly", "version", version, "commit", commit, "date", date)
+	log.Info(
+		"homekit-shelly",
+		"version", version,
+		"commit", commit,
+		"date", date,
+		"info", strings.Join([]string{
+			"Homekit bridge for Shelly devices",
+			"© Carlos Alexandro Becker",
+			"https://becker.software",
+		}, "\n"),
+	)
 
 	var cfg Config
 	if err := env.Parse(&cfg); err != nil {
