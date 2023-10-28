@@ -44,6 +44,7 @@ func main() {
 			"https://becker.software",
 		}, "\n"),
 	)
+
 	var cfg Config
 	if err := env.Parse(&cfg); err != nil {
 		log.Fatal("cannot parse config", "err", err)
