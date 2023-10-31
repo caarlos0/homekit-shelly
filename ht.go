@@ -13,12 +13,34 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
-// TODO: no docs about this it seems, need one to test
 type HTEvent struct {
-	Method  string
-	Battery int     // XXX: change
-	Hr      float64 // XXX: change
-	Temp    float64 // XXX: change
+	Src    string   `json:"src"`
+	Dst    string   `json:"dst"`
+	Method string   `json:"method"`
+	Params HTParams `json:"params"`
+}
+
+type HTBattery struct {
+	Percent int `json:"percent"`
+}
+
+type HTDevicepower0 struct {
+	ID      int       `json:"id"`
+	Battery HTBattery `json:"battery"`
+}
+
+type HTHumidity0 struct {
+	Rh float64 `json:"rh"`
+}
+
+type HTTemperature0 struct {
+	TC float64 `json:"tC"`
+}
+
+type HTParams struct {
+	Devicepower0 HTDevicepower0 `json:"devicepower:0"`
+	Humidity0    HTHumidity0    `json:"humidity:0"`
+	Temperature0 HTTemperature0 `json:"temperature:0"`
 }
 
 type HTSensor struct {
@@ -44,7 +66,8 @@ func NewHTSensor(info accessory.Info) *HTSensor {
 	a.AddS(a.Battery.S)
 
 	id := info.SerialNumber
-	a.topic = fmt.Sprintf("shellyplush&t-%s/events/rpc", strings.ToLower(id))
+
+	a.topic = fmt.Sprintf("shellyplusht-%s/events/rpc", strings.ToLower(id))
 	return &a
 }
 
@@ -88,7 +111,7 @@ func (a *HTSensor) Update(evt HTEvent) error {
 		return nil
 	}
 
-	if v := evt.Battery; a.Battery.BatteryLevel.Value() != v {
+	if v := evt.Params.Devicepower0.Battery.Percent; a.Battery.BatteryLevel.Value() != v {
 		if err := a.Battery.BatteryLevel.SetValue(v); err != nil {
 			return fmt.Errorf("set battery status for %s: %w", serial, err)
 		}
@@ -98,12 +121,12 @@ func (a *HTSensor) Update(evt HTEvent) error {
 		log.Info("updated battery status", "type", "shellyplush&t", "shelly", serial, "status", v)
 	}
 
-	if v := evt.Temp; a.Temperature.CurrentTemperature.Value() != v {
+	if v := evt.Params.Temperature0.TC; a.Temperature.CurrentTemperature.Value() != v {
 		a.Temperature.CurrentTemperature.SetValue(v)
 		log.Info("updated temperature", "type", "shellyplush&t", "shelly", serial, "status", v)
 	}
 
-	if v := evt.Hr; a.Humidity.Value() != v {
+	if v := evt.Params.Humidity0.Rh; a.Humidity.Value() != v {
 		a.Humidity.SetValue(v)
 		log.Info("updated temperature", "type", "shellyplush&t", "shelly", serial, "status", v)
 	}
