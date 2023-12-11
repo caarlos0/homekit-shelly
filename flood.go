@@ -111,10 +111,8 @@ func (a *FloodSensor) Update(evt FloodEvent) error {
 		log.Info("updated flood status", "type", "shellyflood", "shelly", serial, "status", v)
 	}
 
-	if v := evt.Tmp.Value; a.Temperature.CurrentTemperature.Value() != v {
-		a.Temperature.CurrentTemperature.SetValue(v)
-		log.Info("updated temperature", "type", "shellyflood", "shelly", serial, "status", v)
-	}
+	a.Temperature.CurrentTemperature.SetValue(evt.Tmp.Value)
+	log.Info("updated temperature", "type", "shellyflood", "shelly", serial, "status", evt.Tmp.Value)
 
 	return nil
 }

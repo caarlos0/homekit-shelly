@@ -121,15 +121,11 @@ func (a *HTSensor) Update(evt HTEvent) error {
 		log.Info("updated battery status", "type", "shellyplush&t", "shelly", serial, "status", v)
 	}
 
-	if v := evt.Params.Temperature0.TC; a.Temperature.CurrentTemperature.Value() != v {
-		a.Temperature.CurrentTemperature.SetValue(v)
-		log.Info("updated temperature", "type", "shellyplush&t", "shelly", serial, "status", v)
-	}
+	a.Temperature.CurrentTemperature.SetValue(evt.Params.Temperature0.TC)
+	log.Info("updated temperature", "type", "shellyplush&t", "shelly", serial, "status", evt.Params.Temperature0.TC)
 
-	if v := evt.Params.Humidity0.Rh; a.Humidity.Value() != v {
-		a.Humidity.SetValue(v)
-		log.Info("updated temperature", "type", "shellyplush&t", "shelly", serial, "status", v)
-	}
+	a.Humidity.SetValue(evt.Params.Humidity0.Rh)
+	log.Info("updated temperature", "type", "shellyplush&t", "shelly", serial, "status", evt.Params.Humidity0.Rh)
 
 	return nil
 }
