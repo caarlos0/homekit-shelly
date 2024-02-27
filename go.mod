@@ -3,7 +3,7 @@ module github.com/caarlos0/homekit-shelly
 go 1.21.1
 
 require (
-	github.com/brutella/hap v0.0.29
+	github.com/brutella/hap v0.0.30
 	github.com/caarlos0/env/v10 v10.0.0
 	github.com/charmbracelet/log v0.3.1
 	github.com/eclipse/paho.mqtt.golang v1.4.3
