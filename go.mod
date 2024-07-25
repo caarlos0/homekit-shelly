@@ -3,7 +3,7 @@ module github.com/caarlos0/homekit-shelly
 go 1.21.1
 
 require (
-	github.com/brutella/hap v0.0.33
+	github.com/brutella/hap v0.0.34
 	github.com/caarlos0/env/v10 v10.0.0
 	github.com/charmbracelet/log v0.4.0
 	github.com/eclipse/paho.mqtt.golang v1.4.3
@@ -11,7 +11,7 @@ require (
 
 require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
-	github.com/brutella/dnssd v1.2.10 // indirect
+	github.com/brutella/dnssd v1.2.11 // indirect
 	github.com/charmbracelet/lipgloss v0.10.0 // indirect
 	github.com/go-chi/chi v1.5.4 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
