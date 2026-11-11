@@ -6,12 +6,21 @@ Shelly Plus H&T.
 You need to a MQQT service, and set both this project and your Shellies
 to use it.
 
-For a remote broker, set `MQTT_TLS=true`, `MQTT_HOST` to its certificate's
-hostname, and `MQTT_PORT` to its TLS port (usually `8883`). Certificates are
-verified against the system trust store. Set `MQTT_USERNAME` and `MQTT_PASSWORD`
-when the broker requires credentials, and restrict publishing with broker ACLs.
-The default plaintext connection to `localhost:1883` is intended only for a
-trusted local broker, not an untrusted network.
+Remote brokers use TLS by default. Set `MQTT_HOST` to the certificate's hostname
+and `MQTT_PORT` to the broker's TLS port (usually `8883`; the port default remains
+`1883` for compatibility). Certificates are verified against the system trust
+store. Set `MQTT_USERNAME` and `MQTT_PASSWORD` when the broker requires
+credentials, and restrict publishing with broker ACLs.
+
+The default connection to `localhost:1883`, and other numeric loopback
+addresses, remains plaintext for a trusted local broker. Set `MQTT_TLS=true`
+to require TLS there too. `MQTT_TLS=false` is an explicit compatibility exception
+for an independently trusted transport, such as a secure tunnel. It disables
+transport integrity and must not be used on an untrusted network.
+
+Existing remote plaintext deployments must configure a TLS listener and its
+port, or explicitly select that trusted-transport exception. They no longer
+connect in plaintext by default.
 
 You can then run this project with:
 

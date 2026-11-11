@@ -5,9 +5,11 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -28,7 +30,7 @@ var (
 type Config struct {
 	BrokerHost     string   `env:"MQTT_HOST" envDefault:"localhost"`
 	BrokerPort     int      `env:"MQTT_PORT" envDefault:"1883"`
-	BrokerTLS      bool     `env:"MQTT_TLS"`
+	BrokerTLS      *bool    `env:"MQTT_TLS"`
 	BrokerUsername string   `env:"MQTT_USERNAME"`
 	BrokerPassword string   `env:"MQTT_PASSWORD"`
 	Floods         []string `env:"FLOODS"`
@@ -150,12 +152,17 @@ func main() {
 
 func mqttClientOptions(cfg Config) *mqtt.ClientOptions {
 	opts := mqtt.NewClientOptions()
+	ip := net.ParseIP(cfg.BrokerHost)
+	useTLS := !strings.EqualFold(cfg.BrokerHost, "localhost") && (ip == nil || !ip.IsLoopback())
+	if cfg.BrokerTLS != nil {
+		useTLS = *cfg.BrokerTLS
+	}
 	scheme := "tcp"
-	if cfg.BrokerTLS {
+	if useTLS {
 		scheme = "ssl"
 		opts.SetTLSConfig(&tls.Config{ServerName: cfg.BrokerHost})
 	}
-	opts.AddBroker(fmt.Sprintf("%s://%s:%d", scheme, cfg.BrokerHost, cfg.BrokerPort))
+	opts.AddBroker(scheme + "://" + net.JoinHostPort(cfg.BrokerHost, strconv.Itoa(cfg.BrokerPort)))
 	opts.SetClientID("homekit_shelly")
 	opts.SetUsername(cfg.BrokerUsername)
 	opts.SetPassword(cfg.BrokerPassword)
