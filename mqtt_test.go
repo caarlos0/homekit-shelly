@@ -136,6 +136,7 @@ func TestMQTTTransportDefaults(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var cfg Config
+			test.environment["HOMEKIT_PIN"] = "03145154"
 			if err := env.ParseWithOptions(&cfg, env.Options{Environment: test.environment}); err != nil {
 				t.Fatal(err)
 			}

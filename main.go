@@ -28,14 +28,15 @@ var (
 )
 
 type Config struct {
-	BrokerHost     string   `env:"MQTT_HOST" envDefault:"localhost"`
-	BrokerPort     int      `env:"MQTT_PORT" envDefault:"1883"`
-	BrokerTLS      *bool    `env:"MQTT_TLS"`
-	BrokerUsername string   `env:"MQTT_USERNAME"`
-	BrokerPassword string   `env:"MQTT_PASSWORD"`
-	Floods         []string `env:"FLOODS"`
-	Smokes         []string `env:"SMOKES"`
-	HTs            []string `env:"HTS"`
+	BrokerHost string   `env:"MQTT_HOST" envDefault:"localhost"`
+	BrokerPort int      `env:"MQTT_PORT" envDefault:"1883"`
+	Floods     []string `env:"FLOODS"`
+	Smokes     []string `env:"SMOKES"`
+	HTs        []string `env:"HTS"`
+
+	BrokerTLS      *bool  `env:"MQTT_TLS"`
+	BrokerUsername string `env:"MQTT_USERNAME"`
+	BrokerPassword string `env:"MQTT_PASSWORD"`
 }
 
 func main() {
