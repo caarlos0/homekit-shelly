@@ -25,6 +25,7 @@ var (
 )
 
 type Config struct {
+	HomeKitPIN string   `env:"HOMEKIT_PIN,notEmpty"`
 	BrokerHost string   `env:"MQTT_HOST" envDefault:"localhost"`
 	BrokerPort int      `env:"MQTT_PORT" envDefault:"1883"`
 	Floods     []string `env:"FLOODS"`
@@ -48,6 +49,9 @@ func main() {
 	var cfg Config
 	if err := env.Parse(&cfg); err != nil {
 		log.Fatal("cannot parse config", "err", err)
+	}
+	if err := validatePIN(cfg.HomeKitPIN); err != nil {
+		log.Fatal("invalid configuration", "error", err)
 	}
 
 	log.Info("loading accessories", "smokes", cfg.Smokes, "floods", cfg.Floods, "h&ts", cfg.HTs)
@@ -134,6 +138,7 @@ func main() {
 	if err != nil {
 		log.Fatal("fail to start server", "error", err)
 	}
+	server.Pin = cfg.HomeKitPIN
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
@@ -176,4 +181,19 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+func validatePIN(pin string) error {
+	if len(pin) != 8 {
+		return errors.New("homekit pin must contain eight decimal digits")
+	}
+	for _, digit := range pin {
+		if digit < '0' || digit > '9' {
+			return errors.New("homekit pin must contain eight decimal digits")
+		}
+	}
+	if hap.InvalidPins[pin] || pin == "00102003" {
+		return errors.New("homekit pin must not be a known insecure or shared default pin")
+	}
+	return nil
 }
