@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -55,30 +56,36 @@ func TestMQTTTLSBrokerCredentials(t *testing.T) {
 		t.Fatal(err)
 	}
 	listener = tls.NewListener(listener, &tls.Config{Certificates: []tls.Certificate{certificate}})
-	defer listener.Close()
+	t.Cleanup(func() {
+		if err := listener.Close(); err != nil {
+			t.Errorf("close synthetic broker listener: %v", err)
+		}
+	})
 	result := make(chan error, 1)
 	go func() {
+		var resultErr error
+		defer func() { result <- resultErr }()
 		conn, err := listener.Accept()
 		if err != nil {
-			result <- err
+			resultErr = err
 			return
 		}
-		defer conn.Close()
+		defer func() { resultErr = errors.Join(resultErr, conn.Close()) }()
 		packet, err := packets.ReadPacket(conn)
 		if err != nil {
-			result <- err
+			resultErr = err
 			return
 		}
 		connect, ok := packet.(*packets.ConnectPacket)
 		if !ok {
-			result <- fmt.Errorf("expected CONNECT packet, got %T", packet)
+			resultErr = fmt.Errorf("expected CONNECT packet, got %T", packet)
 			return
 		}
 		if connect.Username != "synthetic-user" || string(connect.Password) != "synthetic-password" {
-			result <- fmt.Errorf("CONNECT credentials were not transmitted")
+			resultErr = fmt.Errorf("CONNECT credentials were not transmitted")
 			return
 		}
-		result <- packets.NewControlPacket(packets.Connack).Write(conn)
+		resultErr = packets.NewControlPacket(packets.Connack).Write(conn)
 	}()
 	host, port, err := net.SplitHostPort(listener.Addr().String())
 	if err != nil {
