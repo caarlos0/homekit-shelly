@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net/http"
@@ -25,11 +26,14 @@ var (
 )
 
 type Config struct {
-	BrokerHost string   `env:"MQTT_HOST" envDefault:"localhost"`
-	BrokerPort int      `env:"MQTT_PORT" envDefault:"1883"`
-	Floods     []string `env:"FLOODS"`
-	Smokes     []string `env:"SMOKES"`
-	HTs        []string `env:"HTS"`
+	BrokerHost     string   `env:"MQTT_HOST" envDefault:"localhost"`
+	BrokerPort     int      `env:"MQTT_PORT" envDefault:"1883"`
+	BrokerTLS      bool     `env:"MQTT_TLS"`
+	BrokerUsername string   `env:"MQTT_USERNAME"`
+	BrokerPassword string   `env:"MQTT_PASSWORD"`
+	Floods         []string `env:"FLOODS"`
+	Smokes         []string `env:"SMOKES"`
+	HTs            []string `env:"HTS"`
 }
 
 func main() {
@@ -59,16 +63,7 @@ func main() {
 		Manufacturer: "Shelly",
 	})
 
-	opts := mqtt.NewClientOptions()
-	opts.AddBroker(fmt.Sprintf("tcp://%s:%d", cfg.BrokerHost, cfg.BrokerPort))
-	opts.SetClientID("homekit_shelly")
-	opts.OnConnect = func(_ mqtt.Client) {
-		log.Info("connected to mqtt", "host", cfg.BrokerHost, "port", cfg.BrokerPort)
-	}
-	opts.OnConnectionLost = func(_ mqtt.Client, err error) {
-		log.Error("connection to mqtt lost", "err", err)
-	}
-	cli := mqtt.NewClient(opts)
+	cli := mqtt.NewClient(mqttClientOptions(cfg))
 	if token := cli.Connect(); token.Wait() && token.Error() != nil {
 		log.Fatal("could not connect to mqtt", "token", token)
 	}
@@ -151,6 +146,26 @@ func main() {
 	if err := server.ListenAndServe(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Error("failed to close server", "err", err)
 	}
+}
+
+func mqttClientOptions(cfg Config) *mqtt.ClientOptions {
+	opts := mqtt.NewClientOptions()
+	scheme := "tcp"
+	if cfg.BrokerTLS {
+		scheme = "ssl"
+		opts.SetTLSConfig(&tls.Config{ServerName: cfg.BrokerHost})
+	}
+	opts.AddBroker(fmt.Sprintf("%s://%s:%d", scheme, cfg.BrokerHost, cfg.BrokerPort))
+	opts.SetClientID("homekit_shelly")
+	opts.SetUsername(cfg.BrokerUsername)
+	opts.SetPassword(cfg.BrokerPassword)
+	opts.OnConnect = func(_ mqtt.Client) {
+		log.Info("connected to mqtt", "host", cfg.BrokerHost, "port", cfg.BrokerPort)
+	}
+	opts.OnConnectionLost = func(_ mqtt.Client, err error) {
+		log.Error("connection to mqtt lost", "err", err)
+	}
+	return opts
 }
 
 func allAccessories(floods []*FloodSensor, smokes []*SmokeSensor, hts []*HTSensor) []*accessory.A {

@@ -6,6 +6,13 @@ Shelly Plus H&T.
 You need to a MQQT service, and set both this project and your Shellies
 to use it.
 
+For a remote broker, set `MQTT_TLS=true`, `MQTT_HOST` to its certificate's
+hostname, and `MQTT_PORT` to its TLS port (usually `8883`). Certificates are
+verified against the system trust store. Set `MQTT_USERNAME` and `MQTT_PASSWORD`
+when the broker requires credentials, and restrict publishing with broker ACLs.
+The default plaintext connection to `localhost:1883` is intended only for a
+trusted local broker, not an untrusted network.
+
 You can then run this project with:
 
 ```bash
